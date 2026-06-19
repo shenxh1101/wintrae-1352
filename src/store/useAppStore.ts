@@ -6,11 +6,13 @@ import { messageTemplates as initialTemplates } from '@/data/messages';
 import { rooms as initialRooms } from '@/data/rooms';
 import { formatDate, isSameDay, parseDate } from '@/utils/date';
 
-const STORAGE_KEY = 'bnb-management-templates';
+const STORAGE_KEY_TEMPLATES = 'bnb-management-templates';
+const STORAGE_KEY_ORDERS = 'bnb-management-orders';
+const STORAGE_KEY_TASKS = 'bnb-management-tasks';
 
 const loadTemplates = (): MessageTemplate[] => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(STORAGE_KEY_TEMPLATES);
     if (saved) {
       return JSON.parse(saved);
     }
@@ -22,13 +24,57 @@ const loadTemplates = (): MessageTemplate[] => {
 
 const saveTemplates = (templates: MessageTemplate[]) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+    localStorage.setItem(STORAGE_KEY_TEMPLATES, JSON.stringify(templates));
   } catch (e) {
     console.error('Failed to save templates to localStorage:', e);
   }
 };
 
+const loadOrders = (): Order[] => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_ORDERS);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Failed to load orders from localStorage:', e);
+  }
+  return initialOrders;
+};
+
+const saveOrders = (orders: Order[]) => {
+  try {
+    localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
+  } catch (e) {
+    console.error('Failed to save orders to localStorage:', e);
+  }
+};
+
+const loadTasks = (): CleaningTask[] => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_TASKS);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Failed to load tasks from localStorage:', e);
+  }
+  return initialTasks;
+};
+
+const saveTasks = (tasks: CleaningTask[]) => {
+  try {
+    localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(tasks));
+  } catch (e) {
+    console.error('Failed to save tasks to localStorage:', e);
+  }
+};
+
 const DEFAULT_CHECK_OUT_TIME = '12:00';
+
+const isValidDateRange = (checkInDate: string, checkOutDate: string): boolean => {
+  return parseDate(checkOutDate) > parseDate(checkInDate);
+};
 
 const getCheckOutTimeFromOrder = (order: Order): string => {
   return DEFAULT_CHECK_OUT_TIME;
@@ -69,9 +115,9 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  orders: initialOrders,
+  orders: loadOrders(),
   rooms: initialRooms,
-  cleaningTasks: initialTasks,
+  cleaningTasks: loadTasks(),
   messageTemplates: loadTemplates(),
 
   getOrderById: (orderId) => {
@@ -112,23 +158,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateOrderStatus: (orderId, status) =>
-    set((state) => ({
-      orders: state.orders.map((o) =>
+    set((state) => {
+      const newOrders = state.orders.map((o) =>
         o.id === orderId ? { ...o, status } : o
-      ),
-    })),
+      );
+      saveOrders(newOrders);
+      return { orders: newOrders };
+    }),
 
   addOrder: (order) =>
-    set((state) => ({
-      orders: [...state.orders, order],
-    })),
+    set((state) => {
+      const newOrders = [...state.orders, order];
+      saveOrders(newOrders);
+      return { orders: newOrders };
+    }),
 
   updateOrder: (order) =>
-    set((state) => ({
-      orders: state.orders.map((o) =>
+    set((state) => {
+      const newOrders = state.orders.map((o) =>
         o.id === order.id ? order : o
-      ),
-    })),
+      );
+      saveOrders(newOrders);
+      return { orders: newOrders };
+    }),
 
   saveOrderEdit: (orderId, updates) => {
     const { orders, checkRoomConflict, cleaningTasks, rooms } = get();
@@ -138,6 +190,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const newRoomId = updates.roomId ?? order.roomId;
     const newCheckIn = updates.checkInDate ?? order.checkInDate;
     const newCheckOut = updates.checkOutDate ?? order.checkOutDate;
+
+    if (!isValidDateRange(newCheckIn, newCheckOut)) {
+      return { success: false, error: '退房日期必须晚于入住日期' };
+    }
 
     if (checkRoomConflict(newRoomId, newCheckIn, newCheckOut, orderId)) {
       return { success: false, error: '该房间在所选日期已有预订，请更换房间或日期' };
@@ -157,8 +213,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
 
+    const newOrders = orders.map((o) => (o.id === orderId ? updatedOrder : o));
+    saveOrders(newOrders);
+    saveTasks(newCleaningTasks);
+
     set({
-      orders: orders.map((o) => (o.id === orderId ? updatedOrder : o)),
+      orders: newOrders,
       cleaningTasks: newCleaningTasks,
     });
 
@@ -166,11 +226,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   checkInOrder: (orderId) =>
-    set((state) => ({
-      orders: state.orders.map((o) =>
+    set((state) => {
+      const newOrders = state.orders.map((o) =>
         o.id === orderId ? { ...o, status: 'checked_in' as const } : o
-      ),
-    })),
+      );
+      saveOrders(newOrders);
+      return { orders: newOrders };
+    }),
 
   checkOutOrder: (orderId) =>
     set((state) => {
@@ -205,27 +267,35 @@ export const useAppStore = create<AppState>((set, get) => ({
         newCleaningTasks = [...state.cleaningTasks, newTask];
       }
 
+      const newOrders = state.orders.map((o) =>
+        o.id === orderId ? { ...o, status: 'checked_out' as const } : o
+      );
+      saveOrders(newOrders);
+      saveTasks(newCleaningTasks);
+
       return {
-        orders: state.orders.map((o) =>
-          o.id === orderId ? { ...o, status: 'checked_out' as const } : o
-        ),
+        orders: newOrders,
         cleaningTasks: newCleaningTasks,
       };
     }),
 
   updateCleaningTask: (taskId, updates) =>
-    set((state) => ({
-      cleaningTasks: state.cleaningTasks.map((t) =>
+    set((state) => {
+      const newTasks = state.cleaningTasks.map((t) =>
         t.id === taskId ? { ...t, ...updates } : t
-      ),
-    })),
+      );
+      saveTasks(newTasks);
+      return { cleaningTasks: newTasks };
+    }),
 
   addCleaningPhoto: (taskId, photoUrl) =>
-    set((state) => ({
-      cleaningTasks: state.cleaningTasks.map((t) =>
+    set((state) => {
+      const newTasks = state.cleaningTasks.map((t) =>
         t.id === taskId ? { ...t, photos: [...t.photos, photoUrl] } : t
-      ),
-    })),
+      );
+      saveTasks(newTasks);
+      return { cleaningTasks: newTasks };
+    }),
 
   createCleaningTask: (roomId, orderId, checkOutTime) =>
     set((state) => {
@@ -244,8 +314,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         priority: 'normal',
       };
 
+      const newTasks = [...state.cleaningTasks, newTask];
+      saveTasks(newTasks);
       return {
-        cleaningTasks: [...state.cleaningTasks, newTask],
+        cleaningTasks: newTasks,
       };
     }),
 

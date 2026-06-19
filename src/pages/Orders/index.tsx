@@ -106,6 +106,11 @@ export default function Orders() {
     if (!selectedOrder) return;
     setEditError(null);
 
+    if (new Date(editForm.checkOutDate) <= new Date(editForm.checkInDate)) {
+      setEditError('退房日期必须晚于入住日期');
+      return;
+    }
+
     const updates: Partial<Order> = {
       roomId: editForm.roomId,
       checkInDate: editForm.checkInDate,
@@ -130,7 +135,9 @@ export default function Orders() {
 
   const OrderDetail = ({ order }: { order: Order }) => {
     const currentOrder = orders.find((o) => o.id === order.id) || order;
-    const nights = getNights(currentOrder);
+    const nights = isEditing
+      ? diffDays(new Date(editForm.checkInDate), new Date(editForm.checkOutDate))
+      : getNights(currentOrder);
 
     return (
       <div className="fixed inset-0 z-50 flex justify-end">

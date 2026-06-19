@@ -81,7 +81,7 @@ export interface ChannelData {
   color: string;
 }
 
-export type RoomStatusType = 'occupied' | 'checkout' | 'available' | 'maintenance';
+export type RoomStatusType = 'pending' | 'occupied' | 'checkout' | 'available' | 'maintenance';
 
 export interface CalendarCellData {
   roomId: string;

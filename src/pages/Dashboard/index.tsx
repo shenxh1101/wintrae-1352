@@ -25,6 +25,7 @@ import { CalendarCellData, RoomStatusType, Order } from '@/types';
 import { formatDate, addDays, isToday, getWeekDates, isSameDay, formatMoney, diffDays } from '@/utils/date';
 
 const statusColors: Record<RoomStatusType, string> = {
+  pending: 'bg-bronze-400',
   occupied: 'bg-sage-400',
   checkout: 'bg-coral-400',
   available: 'bg-mist-300',
@@ -32,6 +33,7 @@ const statusColors: Record<RoomStatusType, string> = {
 };
 
 const statusBgColors: Record<RoomStatusType, string> = {
+  pending: 'bg-bronze-400/10 hover:bg-bronze-400/20',
   occupied: 'bg-sage-400/10 hover:bg-sage-400/20',
   checkout: 'bg-coral-400/10 hover:bg-coral-400/20',
   available: 'bg-mist-300/20 hover:bg-mist-300/40',
@@ -105,7 +107,11 @@ export default function Dashboard() {
             );
             break;
           } else if (isInStayPeriod) {
-            status = 'occupied';
+            if (order.status === 'checked_in') {
+              status = 'occupied';
+            } else if (order.status === 'pending') {
+              status = 'pending';
+            }
             orderId = order.id;
             guestName = order.guestName;
             nights = Math.ceil(
@@ -133,6 +139,7 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const todayStr = formatDate(new Date());
+    let pending = 0;
     let occupied = 0;
     let checkout = 0;
     let available = 0;
@@ -142,6 +149,9 @@ export default function Dashboard() {
       const todayCell = calendarData[room.id]?.find((c) => c.date === todayStr);
       if (todayCell) {
         switch (todayCell.status) {
+          case 'pending':
+            pending++;
+            break;
           case 'occupied':
             occupied++;
             break;
@@ -158,7 +168,7 @@ export default function Dashboard() {
       }
     });
 
-    return { occupied, checkout, available, maintenance, total: rooms.length };
+    return { pending, occupied, checkout, available, maintenance, total: rooms.length };
   }, [rooms, calendarData]);
 
   const filteredRooms = useMemo(() => {
@@ -180,7 +190,7 @@ export default function Dashboard() {
     return `${start.getMonth() + 1}月${start.getDate()}日 - ${end.getMonth() + 1}月${end.getDate()}日`;
   };
 
-  const handleCellClick = (roomId: string, date: string, orderId?: string) => {
+  const handleCellClick = (roomId: string, date: string, status: RoomStatusType, orderId?: string) => {
     setClickedCell({ roomId, date, orderId });
     if (orderId) {
       const order = getOrderById(orderId);
@@ -188,7 +198,7 @@ export default function Dashboard() {
         setDetailOrder(order);
         setShowOrderDetail(true);
       }
-    } else {
+    } else if (status === 'available') {
       const room = rooms.find((r) => r.id === roomId);
       setNewOrderForm({
         guestName: '',
@@ -264,7 +274,14 @@ export default function Dashboard() {
   return (
     <Layout title="房态看板" subtitle="实时掌握所有房间状态">
       <div className="space-y-6 animate-fade-in">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <DataCard
+            title="待入住"
+            value={stats.pending}
+            suffix="间"
+            color="bronze"
+            icon={<Calendar className="w-5 h-5" />}
+          />
           <DataCard
             title="已入住"
             value={stats.occupied}
@@ -327,8 +344,8 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                {(['occupied', 'checkout', 'available', 'maintenance'] as RoomStatusType[]).map((s) => (
+              <div className="flex items-center gap-3 flex-wrap">
+                {(['pending', 'occupied', 'checkout', 'available', 'maintenance'] as RoomStatusType[]).map((s) => (
                   <button
                     key={s}
                     onClick={() => setSelectedStatus(selectedStatus === s ? 'all' : s)}
@@ -382,17 +399,21 @@ export default function Dashboard() {
                     {calendarData[room.id]?.map((cell, idx) => (
                       <div
                         key={idx}
-                        className={`relative h-12 rounded-lg cursor-pointer transition-all duration-200 ${
+                        className={`relative h-12 rounded-lg transition-all duration-200 ${
                           statusBgColors[cell.status]
-                        } ${isToday(new Date(cell.date)) ? 'ring-2 ring-wood-400 ring-offset-1' : ''}`}
+                        } ${cell.status !== 'maintenance' ? 'cursor-pointer' : 'cursor-default'} ${
+                          isToday(new Date(cell.date)) ? 'ring-2 ring-wood-400 ring-offset-1' : ''
+                        }`}
                         onMouseEnter={() => setHoveredCell({ roomId: room.id, date: cell.date })}
                         onMouseLeave={() => setHoveredCell(null)}
-                        onClick={() => handleCellClick(room.id, cell.date, cell.orderId)}
+                        onClick={() => handleCellClick(room.id, cell.date, cell.status, cell.orderId)}
                       >
                         {cell.status !== 'available' && cell.status !== 'maintenance' && (
                           <div className="absolute inset-1 flex items-center justify-center">
                             {cell.guestName && (
-                              <span className="text-xs font-medium text-wood-700 truncate">
+                              <span className={`text-xs font-medium truncate ${
+                                cell.status === 'pending' ? 'text-bronze-600' : 'text-wood-700'
+                              }`}>
                                 {cell.guestName}
                               </span>
                             )}
@@ -402,6 +423,12 @@ export default function Dashboard() {
                         {cell.status === 'available' && (
                           <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                             <Plus className="w-4 h-4 text-wood-500" />
+                          </div>
+                        )}
+
+                        {cell.status === 'pending' && (
+                          <div className="absolute top-0.5 right-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-bronze-400"></span>
                           </div>
                         )}
 
@@ -420,10 +447,14 @@ export default function Dashboard() {
                               <>
                                 <p className="text-xs text-wood-500">客人：{cell.guestName}</p>
                                 <p className="text-xs text-wood-500">入住：{cell.nights} 晚</p>
-                                <p className="text-xs text-sage-500 mt-1">点击查看详情</p>
+                                <p className={`text-xs mt-1 ${
+                                  cell.status === 'pending' ? 'text-bronze-500' : 'text-sage-500'
+                                }`}>
+                                  {cell.status === 'pending' ? '点击查看详情（待入住）' : '点击查看详情'}
+                                </p>
                               </>
                             ) : cell.status === 'maintenance' ? (
-                              <p className="text-xs text-brick-500">维修中</p>
+                              <p className="text-xs text-brick-500">维修中，暂不可预订</p>
                             ) : (
                               <p className="text-xs text-wood-500">点击快速新建订单</p>
                             )}
