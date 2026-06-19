@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  background-color: #FAF7F2;
+  color: #3A2906;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F5F0E8;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D4C4A8;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #C9A961;
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-wood-500 text-white rounded-lg font-medium hover:bg-wood-600 transition-all duration-200 active:scale-95;
+  }
+  
+  .btn-secondary {
+    @apply px-4 py-2 bg-wood-100 text-wood-700 rounded-lg font-medium hover:bg-wood-200 transition-all duration-200 active:scale-95;
+  }
+  
+  .btn-ghost {
+    @apply px-4 py-2 text-wood-600 rounded-lg font-medium hover:bg-wood-100 transition-all duration-200;
+  }
+  
+  .card {
+    @apply bg-white rounded-2xl shadow-soft border border-wood-100;
+  }
+  
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-card hover:-translate-y-0.5;
+  }
+  
+  .input-field {
+    @apply w-full px-3 py-2 border border-wood-200 rounded-lg bg-white text-wood-800 placeholder-wood-300 focus:outline-none focus:ring-2 focus:ring-wood-400 focus:border-transparent transition-all;
+  }
+  
+  .label-text {
+    @apply text-sm font-medium text-wood-600 mb-1.5 block;
+  }
+  
+  .title-serif {
+    font-family: 'Noto Serif SC', Georgia, serif;
+  }
+}

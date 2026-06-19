@@ -1,0 +1,111 @@
+import { CleaningTask, Cleaner } from '@/types';
+import { formatDate, addDays } from '@/utils/date';
+
+const today = new Date();
+
+export const cleaners: Cleaner[] = [
+  {
+    id: 'c1',
+    name: '张阿姨',
+    phone: '13800001111',
+    taskCount: 3,
+    todayCompleted: 1,
+  },
+  {
+    id: 'c2',
+    name: '李阿姨',
+    phone: '13800002222',
+    taskCount: 2,
+    todayCompleted: 2,
+  },
+  {
+    id: 'c3',
+    name: '王阿姨',
+    phone: '13800003333',
+    taskCount: 2,
+    todayCompleted: 0,
+  },
+];
+
+export const cleaningTasks: CleaningTask[] = [
+  {
+    id: 't1',
+    roomId: 'r6',
+    roomName: '203 家庭套房',
+    orderId: 'o4',
+    checkOutTime: '12:00',
+    assignedTo: 'c1',
+    status: 'in_progress',
+    photos: [],
+    estimatedDuration: 90,
+    priority: 'urgent',
+  },
+  {
+    id: 't2',
+    roomId: 'r2',
+    roomName: '102 庭院双床房',
+    orderId: 'o6',
+    checkOutTime: '10:30',
+    assignedTo: 'c2',
+    status: 'completed',
+    photos: [
+      'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=200&h=200&fit=crop',
+      'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=200&h=200&fit=crop',
+    ],
+    remark: '卫生间有轻微水垢已清理，更换了新的洗漱用品',
+    estimatedDuration: 60,
+    completedAt: '11:45',
+    priority: 'normal',
+  },
+  {
+    id: 't3',
+    roomId: 'r7',
+    roomName: '301 星空大床房',
+    orderId: 'o7',
+    checkOutTime: '11:00',
+    assignedTo: 'c2',
+    status: 'completed',
+    photos: [
+      'https://images.unsplash.com/photo-1598928506311-c55ded91a20c?w=200&h=200&fit=crop',
+    ],
+    estimatedDuration: 75,
+    completedAt: '12:20',
+    priority: 'normal',
+  },
+  {
+    id: 't4',
+    roomId: 'r1',
+    roomName: '101 山景大床房',
+    orderId: 'o1',
+    checkOutTime: '12:00',
+    assignedTo: undefined,
+    status: 'pending',
+    photos: [],
+    estimatedDuration: 60,
+    priority: 'normal',
+  },
+  {
+    id: 't5',
+    roomId: 'r3',
+    roomName: '103 园景大床房',
+    orderId: 'o2',
+    checkOutTime: '12:00',
+    assignedTo: 'c3',
+    status: 'pending',
+    photos: [],
+    estimatedDuration: 60,
+    priority: 'normal',
+  },
+  {
+    id: 't6',
+    roomId: 'r8',
+    roomName: '302 观景套房',
+    orderId: 'o5',
+    checkOutTime: '12:00',
+    assignedTo: 'c1',
+    status: 'pending',
+    photos: [],
+    estimatedDuration: 120,
+    priority: 'normal',
+  },
+];
