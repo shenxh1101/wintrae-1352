@@ -80,6 +80,15 @@ const getCheckOutTimeFromOrder = (order: Order): string => {
   return DEFAULT_CHECK_OUT_TIME;
 };
 
+const estimateDurationByRoom = (room?: Room): number => {
+  if (!room) return 60;
+  const area = room.area || 25;
+  if (area >= 50) return 120;
+  if (area >= 40) return 90;
+  if (area >= 30) return 75;
+  return 60;
+};
+
 interface AppState {
   orders: Order[];
   rooms: Room[];
@@ -209,7 +218,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...t,
         roomId: newRoomId,
         roomName,
+        guestName: updatedOrder.guestName,
+        checkOutDate: updatedOrder.checkOutDate,
         checkOutTime: getCheckOutTimeFromOrder(updatedOrder),
+        estimatedDuration: estimateDurationByRoom(room),
       };
     });
 
@@ -242,6 +254,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const room = state.rooms.find((r) => r.id === order.roomId);
       const roomName = room ? `${room.name} ${room.type}` : '未知房间';
       const checkOutTime = getCheckOutTimeFromOrder(order);
+      const estimatedDuration = estimateDurationByRoom(room);
 
       const existingTask = state.cleaningTasks.find((t) => t.orderId === orderId);
 
@@ -249,7 +262,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (existingTask) {
         newCleaningTasks = state.cleaningTasks.map((t) =>
           t.id === existingTask.id
-            ? { ...t, status: 'pending' as const, checkOutTime, photos: [] }
+            ? {
+                ...t,
+                status: 'pending' as const,
+                roomId: order.roomId,
+                roomName,
+                guestName: order.guestName,
+                checkOutDate: order.checkOutDate,
+                checkOutTime,
+                estimatedDuration,
+                photos: [],
+              }
             : t
         );
       } else {
@@ -258,10 +281,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           roomId: order.roomId,
           roomName,
           orderId: order.id,
+          guestName: order.guestName,
+          checkOutDate: order.checkOutDate,
           checkOutTime,
           status: 'pending',
           photos: [],
-          estimatedDuration: 60,
+          estimatedDuration,
           priority: 'normal',
         };
         newCleaningTasks = [...state.cleaningTasks, newTask];
@@ -301,16 +326,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => {
       const room = state.rooms.find((r) => r.id === roomId);
       const roomName = room ? `${room.name} ${room.type}` : '未知房间';
+      const order = state.orders.find((o) => o.id === orderId);
 
       const newTask: CleaningTask = {
         id: `task-${Date.now()}`,
         roomId,
         roomName,
         orderId,
+        guestName: order?.guestName,
+        checkOutDate: order?.checkOutDate || formatDate(new Date()),
         checkOutTime,
         status: 'pending',
         photos: [],
-        estimatedDuration: 60,
+        estimatedDuration: estimateDurationByRoom(room),
         priority: 'normal',
       };
 

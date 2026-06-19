@@ -14,6 +14,9 @@ import {
   Users,
   X,
   Eye,
+  CalendarDays,
+  Clock3,
+  Timer,
 } from 'lucide-react';
 import Layout from '@/components/Layout/Layout';
 import StatusBadge from '@/components/StatusBadge';
@@ -21,6 +24,7 @@ import DataCard from '@/components/DataCard';
 import { useAppStore } from '@/store/useAppStore';
 import { CleaningTask, CleaningStatus } from '@/types';
 import { cleaners as initialCleaners } from '@/data/cleaning';
+import { formatDate, addDays, isSameDay, parseDate } from '@/utils/date';
 
 const statusTabs: { key: CleaningStatus | 'all'; label: string }[] = [
   { key: 'all', label: '全部' },
@@ -29,25 +33,69 @@ const statusTabs: { key: CleaningStatus | 'all'; label: string }[] = [
   { key: 'completed', label: '已完成' },
 ];
 
+type DateFilter = 'today' | 'tomorrow' | 'week';
+
+const getWeekDates = (): string[] => {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = addDays(today, mondayOffset);
+  const dates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    dates.push(formatDate(addDays(monday, i)));
+  }
+  return dates;
+};
+
+const dateFilterTabs: { key: DateFilter; label: string }[] = [
+  { key: 'today', label: '今天' },
+  { key: 'tomorrow', label: '明天' },
+  { key: 'week', label: '本周' },
+];
+
 type ViewMode = 'timeline' | 'byCleaner';
 
 export default function Cleaning() {
   const { cleaningTasks, updateCleaningTask, addCleaningPhoto, getCleanerStats } = useAppStore();
   const [activeTab, setActiveTab] = useState<CleaningStatus | 'all'>('all');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('today');
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [cleaners] = useState(initialCleaners);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentUploadTaskId, setCurrentUploadTaskId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('timeline');
+  const [viewMode, setViewMode] = useState<ViewMode>('byCleaner');
 
-  const cleanerStats = useMemo(() => getCleanerStats(), [cleaningTasks, getCleanerStats]);
+  const dateRange = useMemo(() => {
+    const today = new Date();
+    const todayStr = formatDate(today);
+    const tomorrowStr = formatDate(addDays(today, 1));
+    const weekDates = getWeekDates();
+    return { todayStr, tomorrowStr, weekDates };
+  }, []);
 
   const filteredTasks = useMemo(() => {
     return cleaningTasks
-      .filter((t) => activeTab === 'all' || t.status === activeTab)
-      .sort((a, b) => a.checkOutTime.localeCompare(b.checkOutTime));
-  }, [cleaningTasks, activeTab]);
+      .filter((t) => {
+        if (activeTab !== 'all' && t.status !== activeTab) return false;
+        const taskDate = t.checkOutDate;
+        switch (dateFilter) {
+          case 'today':
+            return taskDate === dateRange.todayStr;
+          case 'tomorrow':
+            return taskDate === dateRange.tomorrowStr;
+          case 'week':
+            return dateRange.weekDates.includes(taskDate);
+          default:
+            return true;
+        }
+      })
+      .sort((a, b) => {
+        const dateCompare = a.checkOutDate.localeCompare(b.checkOutDate);
+        if (dateCompare !== 0) return dateCompare;
+        return a.checkOutTime.localeCompare(b.checkOutTime);
+      });
+  }, [cleaningTasks, activeTab, dateFilter, dateRange]);
 
   const tasksByCleaner = useMemo(() => {
     const result: Record<string, CleaningTask[]> = { unassigned: [] };
@@ -65,16 +113,29 @@ export default function Cleaning() {
     return result;
   }, [filteredTasks, cleaners]);
 
+  const filteredStatsByCleaner = useMemo(() => {
+    const stats: Record<string, { total: number; completed: number; inProgress: number; pending: number }> = {};
+    filteredTasks.forEach((t) => {
+      const id = t.assignedTo || 'unassigned';
+      if (!stats[id]) {
+        stats[id] = { total: 0, completed: 0, inProgress: 0, pending: 0 };
+      }
+      stats[id].total++;
+      if (t.status === 'completed') stats[id].completed++;
+      else if (t.status === 'in_progress') stats[id].inProgress++;
+      else stats[id].pending++;
+    });
+    return stats;
+  }, [filteredTasks]);
+
   const stats = useMemo(() => {
-    const allStats = getCleanerStats();
     return {
-      pending: cleaningTasks.filter((t) => t.status === 'pending').length,
-      inProgress: cleaningTasks.filter((t) => t.status === 'in_progress').length,
-      completed: cleaningTasks.filter((t) => t.status === 'completed').length,
-      total: cleaningTasks.length,
-      ...allStats,
+      pending: filteredTasks.filter((t) => t.status === 'pending').length,
+      inProgress: filteredTasks.filter((t) => t.status === 'in_progress').length,
+      completed: filteredTasks.filter((t) => t.status === 'completed').length,
+      total: filteredTasks.length,
     };
-  }, [cleaningTasks, getCleanerStats]);
+  }, [filteredTasks]);
 
   const getCleanerName = (id?: string) => {
     if (!id) return '未分配';
@@ -86,6 +147,15 @@ export default function Cleaning() {
     if (!id) return null;
     const cleaner = cleaners.find((c) => c.id === id);
     return cleaner?.name.charAt(0);
+  };
+
+  const formatDateLabel = (dateStr: string) => {
+    const d = parseDate(dateStr);
+    const today = new Date();
+    const tomorrow = addDays(today, 1);
+    if (dateStr === formatDate(today)) return '今天';
+    if (dateStr === formatDate(tomorrow)) return '明天';
+    return `${d.getMonth() + 1}月${d.getDate()}日`;
   };
 
   const handleAssignCleaner = (taskId: string, cleanerId: string) => {
@@ -170,13 +240,28 @@ export default function Cleaning() {
               </div>
 
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-medium text-wood-800">{task.roomName}</h3>
                   <StatusBadge status={task.status} size="sm" />
+                  {task.guestName && (
+                    <span className="text-xs px-2 py-0.5 bg-bronze-400/10 text-bronze-600 rounded-full">
+                      客人：{task.guestName}
+                    </span>
+                  )}
                 </div>
-                <p className="text-sm text-wood-400 mt-0.5 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" />
-                  退房时间：{task.checkOutTime} · 预计 {task.estimatedDuration} 分钟
+                <p className="text-sm text-wood-400 mt-0.5 flex items-center gap-3 flex-wrap">
+                  <span className="flex items-center gap-1.5">
+                    <CalendarDays className="w-3.5 h-3.5" />
+                    {formatDateLabel(task.checkOutDate)}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Clock3 className="w-3.5 h-3.5" />
+                    {task.checkOutTime} 退房
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Timer className="w-3.5 h-3.5" />
+                    预计 {task.estimatedDuration} 分钟
+                  </span>
                 </p>
               </div>
             </div>
@@ -254,7 +339,9 @@ export default function Cleaning() {
                         <p className="font-medium text-wood-800">
                           {getCleanerName(task.assignedTo)}
                         </p>
-                        <p className="text-xs text-wood-400">今日完成 2 单</p>
+                        <p className="text-xs text-wood-400">
+                          当前期间 {filteredStatsByCleaner[task.assignedTo]?.total || 0} 单
+                        </p>
                       </div>
                     </div>
                     <div className="text-xs text-wood-400 mb-2">更换清洁人员：</div>
@@ -306,7 +393,7 @@ export default function Cleaning() {
                             {cleaner.name}
                           </p>
                           <p className="text-xs text-wood-400">
-                            今日 {cleanerStats[cleaner.id]?.total || 0} 单 · 已完成 {cleanerStats[cleaner.id]?.completed || 0}
+                            当前 {filteredStatsByCleaner[cleaner.id]?.total || 0} 单
                           </p>
                         </div>
                         <span className="text-xs text-wood-400">分配</span>
@@ -377,7 +464,10 @@ export default function Cleaning() {
 
   const CleanerView = ({ cleanerId, cleanerName }: { cleanerId: string; cleanerName: string }) => {
     const tasks = tasksByCleaner[cleanerId] || [];
-    const cleanerStat = cleanerStats[cleanerId];
+    const cleanerStat = filteredStatsByCleaner[cleanerId];
+    const totalMinutes = tasks.reduce((sum, t) => sum + t.estimatedDuration, 0);
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
 
     return (
       <div className="card p-4">
@@ -394,12 +484,17 @@ export default function Cleaning() {
               <p className="font-medium text-wood-800">{cleanerName}</p>
               <p className="text-xs text-wood-400">
                 共 {tasks.length} 个任务
-                {cleanerStat && (
+                {cleanerStat && cleanerId !== 'unassigned' && (
                   <span>
                     {' '}· 已完成 {cleanerStat.completed} · 进行中 {cleanerStat.inProgress}
                   </span>
                 )}
               </p>
+              {cleanerId !== 'unassigned' && tasks.length > 0 && (
+                <p className="text-xs text-sage-600 mt-0.5">
+                  预计工时：{hours > 0 ? `${hours}小时` : ''}{mins}分钟
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -421,17 +516,26 @@ export default function Cleaning() {
                         : 'bg-mist-400'
                     }`}
                   ></div>
-                  <div className="text-xs text-wood-400 mb-1 font-medium">
-                    {task.checkOutTime} 退房
+                  <div className="text-xs text-wood-400 mb-1 font-medium flex items-center gap-2">
+                    <CalendarDays className="w-3 h-3" />
+                    {formatDateLabel(task.checkOutDate)} · {task.checkOutTime}
                   </div>
                   <div
                     className="p-3 bg-wood-50 rounded-xl cursor-pointer hover:bg-wood-100 transition-colors"
                     onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-wood-800">{task.roomName}</span>
-                        <StatusBadge status={task.status} size="sm" />
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-wood-800">{task.roomName}</span>
+                          <StatusBadge status={task.status} size="sm" />
+                        </div>
+                        {task.guestName && (
+                          <p className="text-xs text-bronze-600 mt-1">客人：{task.guestName}</p>
+                        )}
+                        <p className="text-xs text-wood-400 mt-1">
+                          预计 {task.estimatedDuration} 分钟
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         {task.status === 'pending' && task.assignedTo && task.assignedTo !== 'unassigned' && (
@@ -564,9 +668,9 @@ export default function Cleaning() {
   return (
     <Layout title="清洁排班" subtitle="管理清洁任务和人员分配">
       <div className="space-y-5 animate-fade-in">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <DataCard
-            title="今日任务"
+            title="当前任务"
             value={stats.total}
             suffix="个"
             color="wood"
@@ -597,20 +701,38 @@ export default function Cleaning() {
 
         <div className="card p-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2 p-1 bg-wood-50 rounded-xl">
-              {statusTabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === tab.key
-                      ? 'bg-white text-wood-700 shadow-sm'
-                      : 'text-wood-500 hover:text-wood-700'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 p-1 bg-wood-50 rounded-xl">
+                {dateFilterTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setDateFilter(tab.key)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${
+                      dateFilter === tab.key
+                        ? 'bg-white text-wood-700 shadow-sm'
+                        : 'text-wood-500 hover:text-wood-700'
+                    }`}
+                  >
+                    <CalendarDays className="w-4 h-4" />
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 p-1 bg-wood-50 rounded-xl">
+                {statusTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === tab.key
+                        ? 'bg-white text-wood-700 shadow-sm'
+                        : 'text-wood-500 hover:text-wood-700'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
@@ -664,8 +786,9 @@ export default function Cleaning() {
                     }`}
                   ></div>
 
-                  <div className="text-xs text-wood-400 mb-1 font-medium">
-                    {task.checkOutTime} 退房
+                  <div className="text-xs text-wood-400 mb-1 font-medium flex items-center gap-2">
+                    <CalendarDays className="w-3.5 h-3.5" />
+                    {formatDateLabel(task.checkOutDate)} · {task.checkOutTime} 退房
                   </div>
 
                   <TaskCard task={task} />

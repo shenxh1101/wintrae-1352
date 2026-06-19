@@ -38,6 +38,8 @@ export interface CleaningTask {
   roomId: string;
   roomName: string;
   orderId: string;
+  guestName?: string;
+  checkOutDate: string;
   checkOutTime: string;
   assignedTo?: string;
   status: CleaningStatus;
