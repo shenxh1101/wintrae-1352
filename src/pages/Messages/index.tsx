@@ -12,13 +12,14 @@ import {
   Heart,
   Info,
   Check,
-  X,
   Search,
 } from 'lucide-react';
 import Layout from '@/components/Layout/Layout';
+import Modal from '@/components/Modal';
 import { useAppStore } from '@/store/useAppStore';
 import { messageCategories } from '@/data/messages';
 import { MessageTemplate } from '@/types';
+import { formatDate } from '@/utils/date';
 
 const iconMap: Record<string, typeof Key> = {
   key: Key,
@@ -30,13 +31,19 @@ const iconMap: Record<string, typeof Key> = {
 };
 
 export default function Messages() {
-  const { messageTemplates, useTemplate, deleteTemplate } = useAppStore();
+  const { messageTemplates, useTemplate, deleteTemplate, addTemplate, updateTemplate } = useAppStore();
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null);
+  const [formData, setFormData] = useState({
+    title: '',
+    content: '',
+    category: 'checkin',
+    variables: '' as string,
+  });
 
   const filteredTemplates = messageTemplates.filter((t) => {
     const matchesCategory = activeCategory === 'all' || t.category === activeCategory;
@@ -60,9 +67,61 @@ export default function Messages() {
     }
   };
 
+  const handleNew = () => {
+    setEditingTemplate(null);
+    setFormData({
+      title: '',
+      content: '',
+      category: 'checkin',
+      variables: '',
+    });
+    setShowEditModal(true);
+  };
+
   const handleEdit = (template: MessageTemplate) => {
     setEditingTemplate(template);
+    setFormData({
+      title: template.title,
+      content: template.content,
+      category: template.category,
+      variables: template.variables.join(', '),
+    });
     setShowEditModal(true);
+  };
+
+  const handleSave = () => {
+    if (!formData.title.trim() || !formData.content.trim()) {
+      alert('请填写标题和内容');
+      return;
+    }
+
+    const variables = formData.variables
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+
+    if (editingTemplate) {
+      updateTemplate({
+        ...editingTemplate,
+        title: formData.title,
+        content: formData.content,
+        category: formData.category,
+        variables,
+      });
+    } else {
+      const newTemplate: MessageTemplate = {
+        id: `template-${Date.now()}`,
+        title: formData.title,
+        content: formData.content,
+        category: formData.category,
+        variables,
+        useCount: 0,
+        createdAt: formatDate(new Date()),
+      };
+      addTemplate(newTemplate);
+    }
+
+    setShowEditModal(false);
   };
 
   const getCategoryName = (categoryId: string) => {
@@ -86,7 +145,10 @@ export default function Messages() {
               />
             </div>
           </div>
-          <button className="flex items-center gap-2 btn-primary">
+          <button
+            onClick={handleNew}
+            className="flex items-center gap-2 btn-primary"
+          >
             <Plus className="w-4 h-4" />
             新建模板
           </button>
@@ -165,6 +227,19 @@ export default function Messages() {
                   <pre className="whitespace-pre-wrap font-sans">{template.content}</pre>
                 </div>
 
+                {template.variables.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {template.variables.map((v, i) => (
+                      <span
+                        key={i}
+                        className="text-xs px-2 py-0.5 bg-wood-100 text-wood-500 rounded-md"
+                      >
+                        {`{{${v}}}`}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 <div className="mt-4 pt-4 border-t border-wood-50 flex items-center justify-between">
                   <span className="text-xs text-wood-400">使用 {template.useCount} 次</span>
                   <button
@@ -199,13 +274,104 @@ export default function Messages() {
               <MessageSquare className="w-8 h-8 text-wood-300" />
             </div>
             <p className="text-wood-400 mb-4">暂无消息模板</p>
-            <button className="btn-primary">
+            <button onClick={handleNew} className="btn-primary">
               <Plus className="w-4 h-4 mr-1" />
               新建模板
             </button>
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title={editingTemplate ? '编辑模板' : '新建模板'}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="label-text">模板标题</label>
+            <input
+              type="text"
+              placeholder="请输入模板标题"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="input-field"
+            />
+          </div>
+
+          <div>
+            <label className="label-text">分类</label>
+            <select
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              className="input-field"
+            >
+              {messageCategories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="label-text">模板内容</label>
+            <textarea
+              rows={8}
+              placeholder="请输入模板内容，支持使用 {{变量名}} 作为占位符"
+              value={formData.content}
+              onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+              className="input-field font-mono text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="label-text">
+              变量（用逗号分隔）
+            </label>
+            <input
+              type="text"
+              placeholder="例如：客人姓名, 民宿名称, WiFi密码"
+              value={formData.variables}
+              onChange={(e) => setFormData({ ...formData, variables: e.target.value })}
+              className="input-field"
+            />
+            <p className="text-xs text-wood-400 mt-1">
+              在内容中使用 {'{{变量名}}'} 作为占位符，例如：{'{{客人姓名}} 您好！'}
+            </p>
+          </div>
+
+          {formData.variables && (
+            <div className="flex flex-wrap gap-2">
+              {formData.variables
+                .split(',')
+                .map((v) => v.trim())
+                .filter((v) => v)
+                .map((v, i) => (
+                  <span
+                    key={i}
+                    className="text-xs px-2 py-1 bg-wood-100 text-wood-500 rounded-md"
+                  >
+                    {'{{' + v + '}}'}
+                  </span>
+                ))}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              onClick={() => setShowEditModal(false)}
+              className="px-4 py-2 text-wood-600 rounded-lg hover:bg-wood-50 transition-colors"
+            >
+              取消
+            </button>
+            <button onClick={handleSave} className="btn-primary">
+              {editingTemplate ? '保存修改' : '创建模板'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </Layout>
   );
 }

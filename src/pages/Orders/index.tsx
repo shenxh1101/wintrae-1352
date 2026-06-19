@@ -30,7 +30,7 @@ const statusTabs: { key: OrderStatus | 'all'; label: string }[] = [
 ];
 
 export default function Orders() {
-  const { orders, rooms, updateOrderStatus } = useAppStore();
+  const { orders, rooms, checkInOrder, checkOutOrder, updateOrderStatus } = useAppStore();
   const [activeTab, setActiveTab] = useState<OrderStatus | 'all'>('all');
   const [searchText, setSearchText] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -58,11 +58,11 @@ export default function Orders() {
   };
 
   const handleCheckIn = (orderId: string) => {
-    updateOrderStatus(orderId, 'checked_in');
+    checkInOrder(orderId);
   };
 
   const handleCheckOut = (orderId: string) => {
-    updateOrderStatus(orderId, 'checked_out');
+    checkOutOrder(orderId);
   };
 
   const handleCancel = (orderId: string) => {

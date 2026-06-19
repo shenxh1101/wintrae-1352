@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Clock,
   User,
@@ -32,6 +32,9 @@ export default function Cleaning() {
   const [activeTab, setActiveTab] = useState<CleaningStatus | 'all'>('all');
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [cleaners] = useState(initialCleaners);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [currentUploadTaskId, setCurrentUploadTaskId] = useState<string | null>(null);
 
   const filteredTasks = cleaningTasks
     .filter((t) => activeTab === 'all' || t.status === activeTab)
@@ -62,12 +65,27 @@ export default function Cleaning() {
   };
 
   const handlePhotoUpload = (taskId: string) => {
-    const samplePhotos = [
-      'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=200&h=200&fit=crop',
-      'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=200&h=200&fit=crop',
-    ];
-    const randomPhoto = samplePhotos[Math.floor(Math.random() * samplePhotos.length)];
-    addCleaningPhoto(taskId, randomPhoto);
+    setCurrentUploadTaskId(taskId);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUploadTaskId) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64Url = event.target?.result as string;
+      addCleaningPhoto(currentUploadTaskId, base64Url);
+    };
+    reader.readAsDataURL(file);
+
+    e.target.value = '';
+    setCurrentUploadTaskId(null);
+  };
+
+  const handlePhotoClick = (photo: string) => {
+    setPreviewPhoto(photo);
   };
 
   const stats = {
@@ -240,7 +258,8 @@ export default function Cleaning() {
                   {task.photos.map((photo, idx) => (
                     <div
                       key={idx}
-                      className="aspect-square rounded-lg overflow-hidden bg-wood-100"
+                      className="aspect-square rounded-lg overflow-hidden bg-wood-100 cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => handlePhotoClick(photo)}
                     >
                       <img
                         src={photo}
@@ -374,6 +393,35 @@ export default function Cleaning() {
           </div>
         )}
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
+      {previewPhoto && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 animate-fade-in"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] p-4">
+            <img
+              src={previewPhoto}
+              alt="预览照片"
+              className="max-w-full max-h-[85vh] rounded-lg"
+            />
+            <button
+              className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/30 transition-colors"
+              onClick={() => setPreviewPhoto(null)}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

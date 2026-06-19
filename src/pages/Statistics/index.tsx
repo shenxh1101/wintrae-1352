@@ -132,7 +132,7 @@ export default function Statistics() {
         displayColors: false,
         titleFont: {
           size: 13,
-          weight: '600' as const,
+          weight: 600,
         },
         bodyFont: {
           size: 12,
@@ -191,8 +191,9 @@ export default function Statistics() {
         padding: 12,
         cornerRadius: 8,
         callbacks: {
-          label: (context: { label: string; raw: number }) => {
-            return `${context.label}: ${context.raw}%`;
+          label: (context: { label?: string; raw: unknown }) => {
+            const value = typeof context.raw === 'number' ? context.raw : 0;
+            return `${context.label || ''}: ${value}%`;
           },
         },
       },

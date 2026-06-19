@@ -5,7 +5,7 @@ import StatusBadge from '@/components/StatusBadge';
 import DataCard from '@/components/DataCard';
 import { useAppStore } from '@/store/useAppStore';
 import { CalendarCellData, RoomStatusType } from '@/types';
-import { formatDate, addDays, isToday, getWeekDates } from '@/utils/date';
+import { formatDate, addDays, isToday, getWeekDates, isSameDay } from '@/utils/date';
 import { Users, BedDouble, Wrench, Sparkles } from 'lucide-react';
 
 const statusColors: Record<RoomStatusType, string> = {
@@ -45,31 +45,31 @@ export default function Dashboard() {
         let nights: number | undefined;
 
         const roomOrders = orders.filter(
-          (o) => o.roomId === room.id && o.status !== 'cancelled' && o.status !== 'checked_out'
+          (o) => o.roomId === room.id && o.status !== 'cancelled'
         );
 
         for (const order of roomOrders) {
           const checkIn = new Date(order.checkInDate);
           const checkOut = new Date(order.checkOutDate);
 
-          if (date >= checkIn && date < checkOut) {
-            if (order.status === 'checked_in') {
-              status = 'occupied';
-            } else if (order.status === 'pending' && isToday(date)) {
-              status = 'checkout';
-            } else if (order.status === 'pending') {
-              status = 'occupied';
-            }
-            orderId = order.id;
-            guestName = order.guestName;
-            nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-            break;
-          }
+          const isCheckOutDate = isSameDay(date, checkOut);
+          const isInStayPeriod = date >= checkIn && date < checkOut;
 
-          if (isToday(date) && order.status === 'checked_out') {
+          if (isCheckOutDate) {
             status = 'checkout';
             orderId = order.id;
             guestName = order.guestName;
+            nights = Math.ceil(
+              (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            break;
+          } else if (isInStayPeriod) {
+            status = 'occupied';
+            orderId = order.id;
+            guestName = order.guestName;
+            nights = Math.ceil(
+              (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)
+            );
             break;
           }
         }

@@ -72,7 +72,7 @@ export const orders: Order[] = [
     price: 2064,
     deposit: 1000,
     channel: '携程',
-    status: 'pending',
+    status: 'checked_in',
     createdAt: formatDate(addDays(today, -10)),
     guestCount: 4,
   },
