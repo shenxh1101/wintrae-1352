@@ -14,6 +14,8 @@ import {
   CheckCircle,
   LogOut,
   User,
+  Save,
+  AlertCircle,
 } from 'lucide-react';
 import Layout from '@/components/Layout/Layout';
 import StatusBadge from '@/components/StatusBadge';
@@ -30,11 +32,21 @@ const statusTabs: { key: OrderStatus | 'all'; label: string }[] = [
 ];
 
 export default function Orders() {
-  const { orders, rooms, checkInOrder, checkOutOrder, updateOrderStatus } = useAppStore();
+  const { orders, rooms, checkInOrder, checkOutOrder, updateOrderStatus, saveOrderEdit } = useAppStore();
   const [activeTab, setActiveTab] = useState<OrderStatus | 'all'>('all');
   const [searchText, setSearchText] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    roomId: '',
+    checkInDate: '',
+    checkOutDate: '',
+    deposit: 0,
+    specialRequirements: '',
+    invoiceRemark: '',
+  });
 
   const filteredOrders = orders.filter((order) => {
     const matchesStatus = activeTab === 'all' || order.status === activeTab;
@@ -59,180 +71,325 @@ export default function Orders() {
 
   const handleCheckIn = (orderId: string) => {
     checkInOrder(orderId);
+    const updated = orders.find((o) => o.id === orderId);
+    if (updated) {
+      setSelectedOrder({ ...updated, status: 'checked_in' });
+    }
   };
 
   const handleCheckOut = (orderId: string) => {
     checkOutOrder(orderId);
+    const updated = orders.find((o) => o.id === orderId);
+    if (updated) {
+      setSelectedOrder({ ...updated, status: 'checked_out' });
+    }
   };
 
   const handleCancel = (orderId: string) => {
     updateOrderStatus(orderId, 'cancelled');
   };
 
-  const OrderDetail = ({ order }: { order: Order }) => (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div
-        className="absolute inset-0 bg-wood-900/30 backdrop-blur-sm"
-        onClick={() => setShowDetail(false)}
-      ></div>
-      <div className="relative w-full max-w-md bg-white h-full shadow-float animate-slide-right overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-wood-100 p-5 flex items-center justify-between z-10">
-          <div>
-            <h3 className="text-lg font-serif font-semibold text-wood-800">订单详情</h3>
-            <p className="text-sm text-wood-400 mt-0.5">{order.orderNo}</p>
-          </div>
-          <button
-            onClick={() => setShowDetail(false)}
-            className="p-2 rounded-lg text-wood-400 hover:bg-wood-50 hover:text-wood-600 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  const startEdit = (order: Order) => {
+    setEditForm({
+      roomId: order.roomId,
+      checkInDate: order.checkInDate,
+      checkOutDate: order.checkOutDate,
+      deposit: order.deposit,
+      specialRequirements: order.specialRequirements || '',
+      invoiceRemark: order.invoiceRemark || '',
+    });
+    setEditError(null);
+    setIsEditing(true);
+  };
 
-        <div className="p-5 space-y-6">
-          <div className="flex items-center justify-between">
-            <StatusBadge status={order.status} />
-            <span className="text-2xl font-serif font-bold text-wood-700">
-              {formatMoney(order.price)}
-            </span>
-          </div>
+  const handleSaveEdit = () => {
+    if (!selectedOrder) return;
+    setEditError(null);
 
-          <div className="card p-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-wood-300 to-wood-500 flex items-center justify-center">
-                <User className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="font-medium text-wood-800">{order.guestName}</p>
-                <p className="text-sm text-wood-400">{order.guestPhone}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-wood-400">身份证号</p>
-                <p className="text-wood-700 font-medium">{order.guestIdNo}</p>
-              </div>
-              <div>
-                <p className="text-wood-400">入住人数</p>
-                <p className="text-wood-700 font-medium">{order.guestCount} 人</p>
-              </div>
-            </div>
-          </div>
+    const updates: Partial<Order> = {
+      roomId: editForm.roomId,
+      checkInDate: editForm.checkInDate,
+      checkOutDate: editForm.checkOutDate,
+      deposit: editForm.deposit,
+      specialRequirements: editForm.specialRequirements || undefined,
+      invoiceRemark: editForm.invoiceRemark || undefined,
+    };
 
-          <div className="card p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Calendar className="w-4 h-4 text-wood-500" />
-              <span className="text-sm font-medium text-wood-700">入住信息</span>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-wood-400">房间</span>
-                <span className="text-wood-700 font-medium">{getRoomName(order.roomId)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-wood-400">入住日期</span>
-                <span className="text-wood-700 font-medium">{order.checkInDate}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-wood-400">退房日期</span>
-                <span className="text-wood-700 font-medium">{order.checkOutDate}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-wood-400">入住天数</span>
-                <span className="text-wood-700 font-medium">{getNights(order)} 晚</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-wood-400">到店时间</span>
-                <span className="text-wood-700 font-medium">{order.checkInTime || '预计 14:00'}</span>
-              </div>
-            </div>
-          </div>
+    const result = saveOrderEdit(selectedOrder.id, updates);
+    if (!result.success) {
+      setEditError(result.error || '保存失败');
+      return;
+    }
 
-          <div className="card p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <CreditCard className="w-4 h-4 text-wood-500" />
-              <span className="text-sm font-medium text-wood-700">费用信息</span>
+    const updated = orders.find((o) => o.id === selectedOrder.id);
+    if (updated) {
+      setSelectedOrder({ ...updated, ...updates });
+    }
+    setIsEditing(false);
+  };
+
+  const OrderDetail = ({ order }: { order: Order }) => {
+    const currentOrder = orders.find((o) => o.id === order.id) || order;
+    const nights = getNights(currentOrder);
+
+    return (
+      <div className="fixed inset-0 z-50 flex justify-end">
+        <div
+          className="absolute inset-0 bg-wood-900/30 backdrop-blur-sm"
+          onClick={() => {
+            setShowDetail(false);
+            setIsEditing(false);
+          }}
+        ></div>
+        <div className="relative w-full max-w-md bg-white h-full shadow-float animate-slide-right overflow-y-auto">
+          <div className="sticky top-0 bg-white border-b border-wood-100 p-5 flex items-center justify-between z-10">
+            <div>
+              <h3 className="text-lg font-serif font-semibold text-wood-800">
+                {isEditing ? '编辑订单' : '订单详情'}
+              </h3>
+              <p className="text-sm text-wood-400 mt-0.5">{currentOrder.orderNo}</p>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-wood-400">房费</span>
-                <span className="text-wood-700 font-medium">{formatMoney(order.price)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-wood-400">押金</span>
-                <span className="text-wood-700 font-medium">{formatMoney(order.deposit)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-wood-400">预订渠道</span>
-                <span className="text-wood-700 font-medium">{order.channel}</span>
-              </div>
-              <div className="pt-3 border-t border-wood-100 flex items-center justify-between">
-                <span className="text-wood-600 font-medium">总计</span>
-                <span className="text-xl font-serif font-bold text-wood-800">
-                  {formatMoney(order.price + order.deposit)}
-                </span>
-              </div>
+            <div className="flex items-center gap-2">
+              {isEditing ? (
+                <button
+                  onClick={handleSaveEdit}
+                  className="p-2 rounded-lg bg-sage-400 text-white hover:bg-sage-500 transition-colors"
+                  title="保存"
+                >
+                  <Save className="w-5 h-5" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => startEdit(currentOrder)}
+                  className="p-2 rounded-lg text-wood-400 hover:bg-wood-50 hover:text-wood-600 transition-colors"
+                  title="编辑"
+                >
+                  <Edit2 className="w-5 h-5" />
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setShowDetail(false);
+                  setIsEditing(false);
+                }}
+                className="p-2 rounded-lg text-wood-400 hover:bg-wood-50 hover:text-wood-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
 
-          {order.specialRequirements && (
+          <div className="p-5 space-y-6">
+            {editError && (
+              <div className="flex items-center gap-2 p-3 bg-brick-400/10 border border-brick-400/30 rounded-lg text-brick-500 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                {editError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <StatusBadge status={currentOrder.status} />
+              <span className="text-2xl font-serif font-bold text-wood-700">
+                {formatMoney(currentOrder.price)}
+              </span>
+            </div>
+
+            <div className="card p-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-wood-300 to-wood-500 flex items-center justify-center">
+                  <User className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-medium text-wood-800">{currentOrder.guestName}</p>
+                  <p className="text-sm text-wood-400">{currentOrder.guestPhone}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-wood-400">身份证号</p>
+                  <p className="text-wood-700 font-medium">{currentOrder.guestIdNo}</p>
+                </div>
+                <div>
+                  <p className="text-wood-400">入住人数</p>
+                  <p className="text-wood-700 font-medium">{currentOrder.guestCount} 人</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Calendar className="w-4 h-4 text-wood-500" />
+                <span className="text-sm font-medium text-wood-700">入住信息</span>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-wood-400">房间</span>
+                  {isEditing ? (
+                    <select
+                      value={editForm.roomId}
+                      onChange={(e) => setEditForm({ ...editForm, roomId: e.target.value })}
+                      className="text-wood-700 font-medium bg-wood-50 border border-wood-200 rounded-md px-2 py-1 text-sm"
+                    >
+                      {rooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name} {r.type}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-wood-700 font-medium">{getRoomName(currentOrder.roomId)}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-wood-400">入住日期</span>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      value={editForm.checkInDate}
+                      onChange={(e) => setEditForm({ ...editForm, checkInDate: e.target.value })}
+                      className="text-wood-700 font-medium bg-wood-50 border border-wood-200 rounded-md px-2 py-1 text-sm"
+                    />
+                  ) : (
+                    <span className="text-wood-700 font-medium">{currentOrder.checkInDate}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-wood-400">退房日期</span>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      value={editForm.checkOutDate}
+                      onChange={(e) => setEditForm({ ...editForm, checkOutDate: e.target.value })}
+                      className="text-wood-700 font-medium bg-wood-50 border border-wood-200 rounded-md px-2 py-1 text-sm"
+                    />
+                  ) : (
+                    <span className="text-wood-700 font-medium">{currentOrder.checkOutDate}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-wood-400">入住天数</span>
+                  <span className="text-wood-700 font-medium">{nights} 晚</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-wood-400">到店时间</span>
+                  <span className="text-wood-700 font-medium">{currentOrder.checkInTime || '预计 14:00'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <CreditCard className="w-4 h-4 text-wood-500" />
+                <span className="text-sm font-medium text-wood-700">费用信息</span>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-wood-400">房费</span>
+                  <span className="text-wood-700 font-medium">{formatMoney(currentOrder.price)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-wood-400">押金</span>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      value={editForm.deposit}
+                      onChange={(e) => setEditForm({ ...editForm, deposit: Number(e.target.value) })}
+                      className="text-wood-700 font-medium bg-wood-50 border border-wood-200 rounded-md px-2 py-1 text-sm w-24 text-right"
+                    />
+                  ) : (
+                    <span className="text-wood-700 font-medium">{formatMoney(currentOrder.deposit)}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-wood-400">预订渠道</span>
+                  <span className="text-wood-700 font-medium">{currentOrder.channel}</span>
+                </div>
+                <div className="pt-3 border-t border-wood-100 flex items-center justify-between">
+                  <span className="text-wood-600 font-medium">总计</span>
+                  <span className="text-xl font-serif font-bold text-wood-800">
+                    {formatMoney(currentOrder.price + (isEditing ? editForm.deposit : currentOrder.deposit))}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="w-4 h-4 text-wood-500" />
                 <span className="text-sm font-medium text-wood-700">特殊需求</span>
               </div>
-              <p className="text-sm text-wood-600 bg-wood-50 p-3 rounded-lg">
-                {order.specialRequirements}
-              </p>
+              {isEditing ? (
+                <textarea
+                  value={editForm.specialRequirements}
+                  onChange={(e) => setEditForm({ ...editForm, specialRequirements: e.target.value })}
+                  placeholder="例如：需要高楼层、安静、婴儿床等"
+                  className="w-full text-sm text-wood-600 bg-wood-50 p-3 rounded-lg border border-wood-200 min-h-[80px] focus:outline-none focus:border-wood-400"
+                />
+              ) : currentOrder.specialRequirements ? (
+                <p className="text-sm text-wood-600 bg-wood-50 p-3 rounded-lg">
+                  {currentOrder.specialRequirements}
+                </p>
+              ) : (
+                <p className="text-sm text-wood-400">无特殊需求</p>
+              )}
             </div>
-          )}
 
-          {order.invoiceRemark && (
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="w-4 h-4 text-wood-500" />
                 <span className="text-sm font-medium text-wood-700">发票备注</span>
               </div>
-              <p className="text-sm text-wood-600 bg-wood-50 p-3 rounded-lg">
-                {order.invoiceRemark}
-              </p>
+              {isEditing ? (
+                <textarea
+                  value={editForm.invoiceRemark}
+                  onChange={(e) => setEditForm({ ...editForm, invoiceRemark: e.target.value })}
+                  placeholder="发票抬头、税号等信息"
+                  className="w-full text-sm text-wood-600 bg-wood-50 p-3 rounded-lg border border-wood-200 min-h-[80px] focus:outline-none focus:border-wood-400"
+                />
+              ) : currentOrder.invoiceRemark ? (
+                <p className="text-sm text-wood-600 bg-wood-50 p-3 rounded-lg">
+                  {currentOrder.invoiceRemark}
+                </p>
+              ) : (
+                <p className="text-sm text-wood-400">无发票备注</p>
+              )}
             </div>
-          )}
 
-          <div className="space-y-2">
-            {order.status === 'pending' && (
-              <button
-                onClick={() => {
-                  handleCheckIn(order.id);
-                  setSelectedOrder({ ...order, status: 'checked_in' });
-                }}
-                className="w-full py-3 bg-sage-400 text-white rounded-xl font-medium hover:bg-sage-500 transition-colors flex items-center justify-center gap-2"
-              >
-                <CheckCircle className="w-5 h-5" />
-                办理入住
-              </button>
+            {!isEditing && (
+              <div className="space-y-2">
+                {currentOrder.status === 'pending' && (
+                  <button
+                    onClick={() => handleCheckIn(currentOrder.id)}
+                    className="w-full py-3 bg-sage-400 text-white rounded-xl font-medium hover:bg-sage-500 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle className="w-5 h-5" />
+                    办理入住
+                  </button>
+                )}
+                {currentOrder.status === 'checked_in' && (
+                  <button
+                    onClick={() => handleCheckOut(currentOrder.id)}
+                    className="w-full py-3 bg-coral-400 text-white rounded-xl font-medium hover:bg-coral-500 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    办理退房
+                  </button>
+                )}
+                {currentOrder.status !== 'cancelled' && currentOrder.status !== 'checked_out' && (
+                  <button
+                    onClick={() => handleCancel(currentOrder.id)}
+                    className="w-full py-3 border border-brick-400/30 text-brick-500 rounded-xl font-medium hover:bg-brick-400/10 transition-colors flex items-center justify-center gap-2"
+                  >
+                    取消订单
+                  </button>
+                )}
+              </div>
             )}
-            {order.status === 'checked_in' && (
-              <button
-                onClick={() => {
-                  handleCheckOut(order.id);
-                  setSelectedOrder({ ...order, status: 'checked_out' });
-                }}
-                className="w-full py-3 bg-coral-400 text-white rounded-xl font-medium hover:bg-coral-500 transition-colors flex items-center justify-center gap-2"
-              >
-                <LogOut className="w-5 h-5" />
-                办理退房
-              </button>
-            )}
-            <button className="w-full py-3 border border-wood-200 text-wood-600 rounded-xl font-medium hover:bg-wood-50 transition-colors flex items-center justify-center gap-2">
-              <Edit2 className="w-5 h-5" />
-              编辑订单
-            </button>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <Layout title="订单管理" subtitle="查看和管理所有订单">
@@ -286,6 +443,8 @@ export default function Orders() {
               style={{ animationDelay: `${index * 0.03}s` }}
               onClick={() => {
                 setSelectedOrder(order);
+                setIsEditing(false);
+                setEditError(null);
                 setShowDetail(true);
               }}
             >

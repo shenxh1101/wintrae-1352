@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Copy,
   Plus,
@@ -13,6 +13,11 @@ import {
   Info,
   Check,
   Search,
+  Eye,
+  X,
+  User,
+  MapPin,
+  Wifi,
 } from 'lucide-react';
 import Layout from '@/components/Layout/Layout';
 import Modal from '@/components/Modal';
@@ -31,12 +36,14 @@ const iconMap: Record<string, typeof Key> = {
 };
 
 export default function Messages() {
-  const { messageTemplates, useTemplate, deleteTemplate, addTemplate, updateTemplate } = useAppStore();
+  const { messageTemplates, useTemplate, deleteTemplate, addTemplate, updateTemplate, orders, rooms } = useAppStore();
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<MessageTemplate | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null);
   const [formData, setFormData] = useState({
     title: '',
@@ -44,6 +51,10 @@ export default function Messages() {
     category: 'checkin',
     variables: '' as string,
   });
+
+  const [previewVariables, setPreviewVariables] = useState<Record<string, string>>({});
+  const [previewCopied, setPreviewCopied] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string>('');
 
   const filteredTemplates = messageTemplates.filter((t) => {
     const matchesCategory = activeCategory === 'all' || t.category === activeCategory;
@@ -124,10 +135,79 @@ export default function Messages() {
     setShowEditModal(false);
   };
 
+  const handlePreview = (template: MessageTemplate) => {
+    setPreviewTemplate(template);
+    setSelectedOrderId('');
+    const vars: Record<string, string> = {};
+    template.variables.forEach((v) => {
+      vars[v] = '';
+    });
+    setPreviewVariables(vars);
+    setPreviewCopied(false);
+    setShowPreviewModal(true);
+  };
+
+  const handleFillFromOrder = (orderId: string) => {
+    if (!orderId || !previewTemplate) return;
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    const room = rooms.find((r) => r.id === order.roomId);
+
+    const newVars: Record<string, string> = { ...previewVariables };
+    previewTemplate.variables.forEach((v) => {
+      const lower = v.toLowerCase();
+      if (lower.includes('客人') || lower.includes('姓名') || lower.includes('name')) {
+        newVars[v] = order.guestName;
+      } else if (lower.includes('民宿') || lower.includes('酒店') || lower.includes('店名')) {
+        newVars[v] = '暖居民宿';
+      } else if (lower.includes('房间') || lower.includes('房号')) {
+        newVars[v] = room ? `${room.name} ${room.type}` : order.roomId;
+      } else if (lower.includes('入住') && lower.includes('日期')) {
+        newVars[v] = order.checkInDate;
+      } else if (lower.includes('退房') && lower.includes('日期')) {
+        newVars[v] = order.checkOutDate;
+      } else if (lower.includes('到店') || lower.includes('时间')) {
+        newVars[v] = order.checkInTime || '14:00';
+      } else if (lower.includes('手机') || lower.includes('联系') || lower.includes('电话')) {
+        newVars[v] = order.guestPhone;
+      } else if (lower.includes('wifi') || lower.includes('密码') || lower.includes('网络')) {
+        newVars[v] = 'WarmHome888';
+      } else if (lower.includes('地址') || lower.includes('位置')) {
+        newVars[v] = '浙江省杭州市西湖区龙井路88号';
+      } else if (lower.includes('押金')) {
+        newVars[v] = `¥${order.deposit}`;
+      } else if (lower.includes('金额') || lower.includes('房价') || lower.includes('房费')) {
+        newVars[v] = `¥${order.price}`;
+      }
+    });
+    setPreviewVariables(newVars);
+  };
+
+  const previewContent = useMemo(() => {
+    if (!previewTemplate) return '';
+    let content = previewTemplate.content;
+    Object.entries(previewVariables).forEach(([key, value]) => {
+      const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
+      content = content.replace(regex, value || `{{${key}}}`);
+    });
+    return content;
+  }, [previewTemplate, previewVariables]);
+
+  const handleCopyPreview = () => {
+    navigator.clipboard.writeText(previewContent);
+    if (previewTemplate) {
+      useTemplate(previewTemplate.id);
+    }
+    setPreviewCopied(true);
+    setTimeout(() => setPreviewCopied(false), 2000);
+  };
+
   const getCategoryName = (categoryId: string) => {
     const cat = messageCategories.find((c) => c.id === categoryId);
     return cat?.name || categoryId;
   };
+
+  const availableOrders = orders.filter((o) => o.status !== 'cancelled');
 
   return (
     <Layout title="消息模板" subtitle="管理常用消息模板，提升沟通效率">
@@ -202,6 +282,13 @@ export default function Messages() {
                   </div>
                   <div className="flex items-center gap-1">
                     <button
+                      onClick={() => handlePreview(template)}
+                      className="p-1.5 rounded-lg text-wood-400 hover:bg-sage-400/10 hover:text-sage-500 transition-colors"
+                      title="发送预览"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => handleEdit(template)}
                       className="p-1.5 rounded-lg text-wood-400 hover:bg-wood-50 hover:text-wood-600 transition-colors"
                       title="编辑"
@@ -242,26 +329,35 @@ export default function Messages() {
 
                 <div className="mt-4 pt-4 border-t border-wood-50 flex items-center justify-between">
                   <span className="text-xs text-wood-400">使用 {template.useCount} 次</span>
-                  <button
-                    onClick={() => handleCopy(template)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                      copiedId === template.id
-                        ? 'bg-sage-400 text-white'
-                        : 'bg-wood-50 text-wood-600 hover:bg-wood-100'
-                    }`}
-                  >
-                    {copiedId === template.id ? (
-                      <>
-                        <Check className="w-4 h-4" />
-                        已复制
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4" />
-                        复制内容
-                      </>
-                    )}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handlePreview(template)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-sage-400/10 text-sage-600 hover:bg-sage-400/20 transition-all"
+                    >
+                      <Eye className="w-4 h-4" />
+                      预览
+                    </button>
+                    <button
+                      onClick={() => handleCopy(template)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        copiedId === template.id
+                          ? 'bg-sage-400 text-white'
+                          : 'bg-wood-50 text-wood-600 hover:bg-wood-100'
+                      }`}
+                    >
+                      {copiedId === template.id ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          已复制
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          复制内容
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -372,6 +468,123 @@ export default function Messages() {
           </div>
         </div>
       </Modal>
+
+      {showPreviewModal && previewTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-wood-900/30 backdrop-blur-sm"
+            onClick={() => setShowPreviewModal(false)}
+          ></div>
+          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-float animate-fade-in max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-wood-100">
+              <div>
+                <h3 className="text-lg font-serif font-semibold text-wood-800">发送预览</h3>
+                <p className="text-sm text-wood-400 mt-0.5">{previewTemplate.title}</p>
+              </div>
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="p-2 rounded-lg text-wood-400 hover:bg-wood-50 hover:text-wood-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5 overflow-y-auto flex-1">
+              <div>
+                <label className="label-text mb-2 flex items-center gap-1.5">
+                  <User className="w-4 h-4" />
+                  选择订单自动填充（可选）
+                </label>
+                <select
+                  value={selectedOrderId}
+                  onChange={(e) => {
+                    setSelectedOrderId(e.target.value);
+                    handleFillFromOrder(e.target.value);
+                  }}
+                  className="input-field"
+                >
+                  <option value="">-- 不选择订单，手动填写 --</option>
+                  {availableOrders.map((o) => {
+                    const room = rooms.find((r) => r.id === o.roomId);
+                    return (
+                      <option key={o.id} value={o.id}>
+                        {o.guestName} - {room?.name || o.roomId} ({o.checkInDate}~{o.checkOutDate})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {previewTemplate.variables.length > 0 && (
+                <div>
+                  <label className="label-text mb-2">变量填充</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {previewTemplate.variables.map((v, i) => (
+                      <div key={i}>
+                        <label className="text-xs text-wood-500 mb-1 block">
+                          {`{{${v}}}`}
+                        </label>
+                        <input
+                          type="text"
+                          value={previewVariables[v] || ''}
+                          onChange={(e) =>
+                            setPreviewVariables({ ...previewVariables, [v]: e.target.value })
+                          }
+                          placeholder={`请输入${v}`}
+                          className="input-field text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label-text mb-0 flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4" />
+                    预览内容
+                  </label>
+                  <button
+                    onClick={handleCopyPreview}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      previewCopied
+                        ? 'bg-sage-400 text-white'
+                        : 'bg-wood-50 text-wood-600 hover:bg-wood-100'
+                    }`}
+                  >
+                    {previewCopied ? (
+                      <>
+                        <Check className="w-4 h-4" />
+                        已复制
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4" />
+                        复制完整内容
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="bg-wood-50 rounded-xl p-4 border border-wood-100">
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-wood-700 leading-relaxed">
+                    {previewContent}
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-wood-100 flex justify-end gap-3">
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="px-4 py-2 text-wood-600 rounded-lg hover:bg-wood-50 transition-colors"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

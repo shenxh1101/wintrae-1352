@@ -1,12 +1,28 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Filter, Plus, Eye } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  Plus,
+  Users,
+  BedDouble,
+  Wrench,
+  Sparkles,
+  X,
+  Save,
+  User,
+  Calendar,
+  CreditCard,
+  FileText,
+  Phone,
+  AlertCircle,
+} from 'lucide-react';
 import Layout from '@/components/Layout/Layout';
 import StatusBadge from '@/components/StatusBadge';
 import DataCard from '@/components/DataCard';
 import { useAppStore } from '@/store/useAppStore';
-import { CalendarCellData, RoomStatusType } from '@/types';
-import { formatDate, addDays, isToday, getWeekDates, isSameDay } from '@/utils/date';
-import { Users, BedDouble, Wrench, Sparkles } from 'lucide-react';
+import { CalendarCellData, RoomStatusType, Order } from '@/types';
+import { formatDate, addDays, isToday, getWeekDates, isSameDay, formatMoney, diffDays } from '@/utils/date';
 
 const statusColors: Record<RoomStatusType, string> = {
   occupied: 'bg-sage-400',
@@ -22,12 +38,37 @@ const statusBgColors: Record<RoomStatusType, string> = {
   maintenance: 'bg-brick-400/10 hover:bg-brick-400/20',
 };
 
+interface CellClickData {
+  roomId: string;
+  date: string;
+  orderId?: string;
+}
+
 export default function Dashboard() {
-  const { rooms, orders } = useAppStore();
+  const { rooms, orders, addOrder, getOrderById, checkRoomConflict } = useAppStore();
   const [baseDate, setBaseDate] = useState(new Date());
   const [selectedStatus, setSelectedStatus] = useState<RoomStatusType | 'all'>('all');
   const [hoveredCell, setHoveredCell] = useState<{ roomId: string; date: string } | null>(null);
-  const [showOrderModal, setShowOrderModal] = useState(false);
+
+  const [showOrderDetail, setShowOrderDetail] = useState(false);
+  const [showNewOrder, setShowNewOrder] = useState(false);
+  const [clickedCell, setClickedCell] = useState<CellClickData | null>(null);
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+
+  const [newOrderForm, setNewOrderForm] = useState({
+    guestName: '',
+    guestPhone: '',
+    guestIdNo: '',
+    guestCount: 2,
+    checkInDate: '',
+    checkOutDate: '',
+    price: 0,
+    deposit: 500,
+    channel: '携程',
+    specialRequirements: '',
+    invoiceRemark: '',
+  });
+  const [newOrderError, setNewOrderError] = useState<string | null>(null);
 
   const weekDates = useMemo(() => getWeekDates(baseDate), [baseDate]);
 
@@ -139,7 +180,86 @@ export default function Dashboard() {
     return `${start.getMonth() + 1}月${start.getDate()}日 - ${end.getMonth() + 1}月${end.getDate()}日`;
   };
 
+  const handleCellClick = (roomId: string, date: string, orderId?: string) => {
+    setClickedCell({ roomId, date, orderId });
+    if (orderId) {
+      const order = getOrderById(orderId);
+      if (order) {
+        setDetailOrder(order);
+        setShowOrderDetail(true);
+      }
+    } else {
+      const room = rooms.find((r) => r.id === roomId);
+      setNewOrderForm({
+        guestName: '',
+        guestPhone: '',
+        guestIdNo: '',
+        guestCount: 2,
+        checkInDate: date,
+        checkOutDate: formatDate(addDays(new Date(date), 1)),
+        price: room?.price || 388,
+        deposit: 500,
+        channel: '携程',
+        specialRequirements: '',
+        invoiceRemark: '',
+      });
+      setNewOrderError(null);
+      setShowNewOrder(true);
+    }
+  };
+
+  const handleCreateOrder = () => {
+    if (!clickedCell) return;
+    setNewOrderError(null);
+
+    if (!newOrderForm.guestName) {
+      setNewOrderError('请填写客人姓名');
+      return;
+    }
+    if (!newOrderForm.guestPhone) {
+      setNewOrderError('请填写客人手机号');
+      return;
+    }
+    if (!newOrderForm.checkInDate || !newOrderForm.checkOutDate) {
+      setNewOrderError('请选择入住和退房日期');
+      return;
+    }
+    if (new Date(newOrderForm.checkOutDate) <= new Date(newOrderForm.checkInDate)) {
+      setNewOrderError('退房日期必须晚于入住日期');
+      return;
+    }
+
+    if (checkRoomConflict(clickedCell.roomId, newOrderForm.checkInDate, newOrderForm.checkOutDate)) {
+      setNewOrderError('该房间在所选日期已有预订，请更换日期');
+      return;
+    }
+
+    const newOrder: Order = {
+      id: `o-${Date.now()}`,
+      orderNo: `MS${formatDate(new Date(), 'YYYYMMDD')}${String(orders.length + 1).padStart(3, '0')}`,
+      roomId: clickedCell.roomId,
+      guestName: newOrderForm.guestName,
+      guestPhone: newOrderForm.guestPhone,
+      guestIdNo: newOrderForm.guestIdNo,
+      checkInDate: newOrderForm.checkInDate,
+      checkOutDate: newOrderForm.checkOutDate,
+      price: newOrderForm.price,
+      deposit: newOrderForm.deposit,
+      channel: newOrderForm.channel,
+      status: 'pending',
+      specialRequirements: newOrderForm.specialRequirements || undefined,
+      invoiceRemark: newOrderForm.invoiceRemark || undefined,
+      createdAt: formatDate(new Date()),
+      guestCount: newOrderForm.guestCount,
+    };
+
+    addOrder(newOrder);
+    setShowNewOrder(false);
+  };
+
   const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+  const room = clickedCell ? rooms.find((r) => r.id === clickedCell.roomId) : null;
 
   return (
     <Layout title="房态看板" subtitle="实时掌握所有房间状态">
@@ -223,10 +343,6 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 btn-primary">
-                <Plus className="w-4 h-4" />
-                新建订单
-              </button>
             </div>
           </div>
 
@@ -271,7 +387,7 @@ export default function Dashboard() {
                         } ${isToday(new Date(cell.date)) ? 'ring-2 ring-wood-400 ring-offset-1' : ''}`}
                         onMouseEnter={() => setHoveredCell({ roomId: room.id, date: cell.date })}
                         onMouseLeave={() => setHoveredCell(null)}
-                        onClick={() => cell.orderId && setShowOrderModal(true)}
+                        onClick={() => handleCellClick(room.id, cell.date, cell.orderId)}
                       >
                         {cell.status !== 'available' && cell.status !== 'maintenance' && (
                           <div className="absolute inset-1 flex items-center justify-center">
@@ -283,17 +399,34 @@ export default function Dashboard() {
                           </div>
                         )}
 
+                        {cell.status === 'available' && (
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                            <Plus className="w-4 h-4 text-wood-500" />
+                          </div>
+                        )}
+
                         {cell.status === 'maintenance' && (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <Wrench className="w-4 h-4 text-brick-500" />
                           </div>
                         )}
 
-                        {hoveredCell?.roomId === room.id && hoveredCell?.date === cell.date && cell.orderId && (
+                        {hoveredCell?.roomId === room.id && hoveredCell?.date === cell.date && (
                           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10 w-48 p-3 bg-white rounded-xl shadow-float border border-wood-100 animate-slide-up">
-                            <p className="text-sm font-medium text-wood-800 mb-1">{room.name} - {room.type}</p>
-                            <p className="text-xs text-wood-500">客人：{cell.guestName}</p>
-                            <p className="text-xs text-wood-500">入住：{cell.nights} 晚</p>
+                            <p className="text-sm font-medium text-wood-800 mb-1">
+                              {room.name} - {room.type}
+                            </p>
+                            {cell.orderId ? (
+                              <>
+                                <p className="text-xs text-wood-500">客人：{cell.guestName}</p>
+                                <p className="text-xs text-wood-500">入住：{cell.nights} 晚</p>
+                                <p className="text-xs text-sage-500 mt-1">点击查看详情</p>
+                              </>
+                            ) : cell.status === 'maintenance' ? (
+                              <p className="text-xs text-brick-500">维修中</p>
+                            ) : (
+                              <p className="text-xs text-wood-500">点击快速新建订单</p>
+                            )}
                             <div className="flex items-center gap-1.5 mt-2">
                               <StatusBadge status={cell.status} size="sm" />
                             </div>
@@ -308,6 +441,317 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {showOrderDetail && detailOrder && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div
+            className="absolute inset-0 bg-wood-900/30 backdrop-blur-sm"
+            onClick={() => setShowOrderDetail(false)}
+          ></div>
+          <div className="relative w-full max-w-md bg-white h-full shadow-float animate-slide-right overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-wood-100 p-5 flex items-center justify-between z-10">
+              <div>
+                <h3 className="text-lg font-serif font-semibold text-wood-800">订单详情</h3>
+                <p className="text-sm text-wood-400 mt-0.5">{detailOrder.orderNo}</p>
+              </div>
+              <button
+                onClick={() => setShowOrderDetail(false)}
+                className="p-2 rounded-lg text-wood-400 hover:bg-wood-50 hover:text-wood-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-6">
+              <div className="flex items-center justify-between">
+                <StatusBadge status={detailOrder.status} />
+                <span className="text-2xl font-serif font-bold text-wood-700">
+                  {formatMoney(detailOrder.price)}
+                </span>
+              </div>
+
+              <div className="card p-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-wood-300 to-wood-500 flex items-center justify-center">
+                    <User className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-wood-800">{detailOrder.guestName}</p>
+                    <p className="text-sm text-wood-400">{detailOrder.guestPhone}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-wood-400">身份证号</p>
+                    <p className="text-wood-700 font-medium">{detailOrder.guestIdNo}</p>
+                  </div>
+                  <div>
+                    <p className="text-wood-400">入住人数</p>
+                    <p className="text-wood-700 font-medium">{detailOrder.guestCount} 人</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Calendar className="w-4 h-4 text-wood-500" />
+                  <span className="text-sm font-medium text-wood-700">入住信息</span>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-wood-400">房间</span>
+                    <span className="text-wood-700 font-medium">
+                      {room ? `${room.name} ${room.type}` : '未知'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-wood-400">入住日期</span>
+                    <span className="text-wood-700 font-medium">{detailOrder.checkInDate}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-wood-400">退房日期</span>
+                    <span className="text-wood-700 font-medium">{detailOrder.checkOutDate}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-wood-400">入住天数</span>
+                    <span className="text-wood-700 font-medium">
+                      {diffDays(new Date(detailOrder.checkInDate), new Date(detailOrder.checkOutDate))} 晚
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-wood-400">到店时间</span>
+                    <span className="text-wood-700 font-medium">{detailOrder.checkInTime || '预计 14:00'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <CreditCard className="w-4 h-4 text-wood-500" />
+                  <span className="text-sm font-medium text-wood-700">费用信息</span>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-wood-400">房费</span>
+                    <span className="text-wood-700 font-medium">{formatMoney(detailOrder.price)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-wood-400">押金</span>
+                    <span className="text-wood-700 font-medium">{formatMoney(detailOrder.deposit)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-wood-400">预订渠道</span>
+                    <span className="text-wood-700 font-medium">{detailOrder.channel}</span>
+                  </div>
+                  <div className="pt-3 border-t border-wood-100 flex items-center justify-between">
+                    <span className="text-wood-600 font-medium">总计</span>
+                    <span className="text-xl font-serif font-bold text-wood-800">
+                      {formatMoney(detailOrder.price + detailOrder.deposit)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {detailOrder.specialRequirements && (
+                <div className="card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-4 h-4 text-wood-500" />
+                    <span className="text-sm font-medium text-wood-700">特殊需求</span>
+                  </div>
+                  <p className="text-sm text-wood-600 bg-wood-50 p-3 rounded-lg">
+                    {detailOrder.specialRequirements}
+                  </p>
+                </div>
+              )}
+
+              {detailOrder.invoiceRemark && (
+                <div className="card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-4 h-4 text-wood-500" />
+                    <span className="text-sm font-medium text-wood-700">发票备注</span>
+                  </div>
+                  <p className="text-sm text-wood-600 bg-wood-50 p-3 rounded-lg">
+                    {detailOrder.invoiceRemark}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNewOrder && room && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-wood-900/30 backdrop-blur-sm"
+            onClick={() => setShowNewOrder(false)}
+          ></div>
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-float animate-fade-in max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-wood-100 p-5 flex items-center justify-between rounded-t-2xl">
+              <div>
+                <h3 className="text-lg font-serif font-semibold text-wood-800">新建订单</h3>
+                <p className="text-sm text-wood-400 mt-0.5">
+                  {room.name} {room.type}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowNewOrder(false)}
+                className="p-2 rounded-lg text-wood-400 hover:bg-wood-50 hover:text-wood-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {newOrderError && (
+                <div className="flex items-center gap-2 p-3 bg-brick-400/10 border border-brick-400/30 rounded-lg text-brick-500 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {newOrderError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-text">客人姓名 *</label>
+                  <input
+                    type="text"
+                    value={newOrderForm.guestName}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, guestName: e.target.value })}
+                    className="input-field"
+                    placeholder="请输入姓名"
+                  />
+                </div>
+                <div>
+                  <label className="label-text">手机号 *</label>
+                  <input
+                    type="tel"
+                    value={newOrderForm.guestPhone}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, guestPhone: e.target.value })}
+                    className="input-field"
+                    placeholder="请输入手机号"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label-text">身份证号</label>
+                <input
+                  type="text"
+                  value={newOrderForm.guestIdNo}
+                  onChange={(e) => setNewOrderForm({ ...newOrderForm, guestIdNo: e.target.value })}
+                  className="input-field"
+                  placeholder="请输入身份证号"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-text">入住日期 *</label>
+                  <input
+                    type="date"
+                    value={newOrderForm.checkInDate}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, checkInDate: e.target.value })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="label-text">退房日期 *</label>
+                  <input
+                    type="date"
+                    value={newOrderForm.checkOutDate}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, checkOutDate: e.target.value })}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="label-text">入住人数</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newOrderForm.guestCount}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, guestCount: Number(e.target.value) })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="label-text">房费 (¥)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newOrderForm.price}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, price: Number(e.target.value) })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="label-text">押金 (¥)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newOrderForm.deposit}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, deposit: Number(e.target.value) })}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label-text">预订渠道</label>
+                <select
+                  value={newOrderForm.channel}
+                  onChange={(e) => setNewOrderForm({ ...newOrderForm, channel: e.target.value })}
+                  className="input-field"
+                >
+                  <option value="携程">携程</option>
+                  <option value="美团">美团</option>
+                  <option value="飞猪">飞猪</option>
+                  <option value="Booking">Booking</option>
+                  <option value="直接预订">直接预订</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="label-text">特殊需求</label>
+                <textarea
+                  value={newOrderForm.specialRequirements}
+                  onChange={(e) => setNewOrderForm({ ...newOrderForm, specialRequirements: e.target.value })}
+                  placeholder="例如：需要高楼层、安静、婴儿床等"
+                  className="input-field min-h-[80px]"
+                />
+              </div>
+
+              <div>
+                <label className="label-text">发票备注</label>
+                <textarea
+                  value={newOrderForm.invoiceRemark}
+                  onChange={(e) => setNewOrderForm({ ...newOrderForm, invoiceRemark: e.target.value })}
+                  placeholder="发票抬头、税号等信息"
+                  className="input-field min-h-[80px]"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowNewOrder(false)}
+                  className="flex-1 py-3 border border-wood-200 text-wood-600 rounded-xl font-medium hover:bg-wood-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleCreateOrder}
+                  className="flex-1 py-3 bg-sage-400 text-white rounded-xl font-medium hover:bg-sage-500 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Save className="w-5 h-5" />
+                  创建订单
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
